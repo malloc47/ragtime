@@ -12,7 +12,6 @@
   ;; TODO: is there a portable way to detect table existence?
   (try
     (sql/db-do-commands db
-      true
       (sql/create-table-ddl migrations-table
                             [:id "varchar(255)"]
                             [:created_at "varchar(32)"]))
@@ -25,24 +24,21 @@
 (defrecord SqlDatabase []
   Migratable
   (add-migration-id [db id]
-    (sql/with-db-transaction [connection db]
-      (ensure-migrations-table-exists connection)
-      (sql/insert! connection
-                   migrations-table
-                   [:id :created_at]
-                   [(str id) (format-datetime (Date.))])))
+    (ensure-migrations-table-exists db)
+    (sql/insert! db
+                 migrations-table
+                 [:id :created_at]
+                 [(str id) (format-datetime (Date.))]))
 
   (remove-migration-id [db id]
-    (sql/with-db-transaction [connection db]
-      (ensure-migrations-table-exists connection)
-      (sql/delete! connection migrations-table ["id = ?" id])))
+    (ensure-migrations-table-exists db)
+    (sql/delete! db migrations-table ["id = ?" id]))
 
   (applied-migration-ids [db]
-    (sql/with-db-transaction [connection db]
-      (ensure-migrations-table-exists connection)
-      (sql/query connection
-                 [(format "SELECT id FROM %s ORDER BY created_at" migrations-table)]
-                 :result-set-fn #(->> % (map :id) vec)))))
+    (ensure-migrations-table-exists db)
+    (sql/query db
+               [(format "SELECT id FROM %s ORDER BY created_at" migrations-table)]
+               :result-set-fn #(->> % (map :id) vec))))
 
 (defmethod connection "jdbc" [url]
   (map->SqlDatabase {:connection-uri url}))
