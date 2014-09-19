@@ -10,7 +10,9 @@
   (remove-migration-id [db migration-id]
     "Remove a rolled-back migration ID from the database.")
   (applied-migration-ids [db]
-    "Return a list of the ids of all migrations applied to the database."))
+    "Return a list of the ids of all migrations applied to the database.")
+  (run-migrations [db migrations]
+    "Execute one or more migrations on database"))
 
 (defmulti connection
   "Create a Migratable database connection from a URL. Dispatches on the URL

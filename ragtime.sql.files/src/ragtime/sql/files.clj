@@ -1,7 +1,8 @@
 (ns ragtime.sql.files
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
-            [clojure.java.jdbc :as sql]))
+            [clojure.java.jdbc :as sql]
+            [ragtime.core :as core]))
 
 (def ^:private migration-pattern
   #"(.*)\.(up|down)\.sql$")
@@ -66,40 +67,28 @@
        (map str/trim)
        (remove str/blank?)))
 
-(defn postgres? [conn]
-  (-> conn class .getName (.contains "postgresql")))
-
-(defn- print-next-ex-trace [e]
-  (when e
-    (when-let [next-e (.getNextException e)]
-      (.printStackTrace next-e))))
-
-(defn- run-sql-fn [file]
+(defn run-psql-fn [file]
   (fn [db]
-    (sql/with-db-transaction [connection db]
-      (try
-        (if (postgres? connection)
-          (sql/execute! connection [(slurp file)])
-          (doseq [s (sql-statements (slurp file))]
-            (sql/db-do-commands connection s)))
-        (catch java.sql.BatchUpdateException e
-          (print-next-ex-trace e)
-          (throw e))
-        (catch java.sql.SQLException e
-          (print-next-ex-trace e)
-          (throw e))))))
+    (core/run-migrations db [(slurp file)])))
 
-(defn- make-migration [[id [down up]]]
-  {:id   id
-   :up   (run-sql-fn up)
-   :down (run-sql-fn down)})
+(defn run-sql-fn [file]
+  (fn [db]
+    (core/run-migrations db (sql-statements (slurp file)))))
+
+(defn- make-migration [run-fn [id [down up]]]
+  {:id       id
+   :up       (run-fn up)
+   :down     (run-fn down)
+   :sql-up   (slurp up)
+   :sql-down (slurp down)})
 
 (def ^:private default-dir "migrations")
 
 (defn migrations
   "Return a list of migrations to apply."
-  ([] (migrations default-dir))
-  ([dir]
+  ([] (migrations default-dir run-sql-fn))
+  ([dir] (migrations dir run-sql-fn))
+  ([dir run-fn]
      (->> (get-migration-files dir)
-          (map make-migration)
+          (map (partial make-migration run-fn))
           (sort-by :id))))

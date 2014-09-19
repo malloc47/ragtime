@@ -41,13 +41,32 @@
              [(format "SELECT id FROM %s ORDER BY created_at" migrations-table)]
              :result-set-fn #(->> % (map :id) vec)))
 
+(defn- print-next-ex-trace [e]
+  (when e
+    (when-let [next-e (.getNextException e)]
+      (.printStackTrace next-e))))
+
+(defn sql-run-migrations [db migrations]
+  (sql/with-db-transaction [connection db]
+    (try
+      (doseq [migration migrations]
+        (sql/execute! connection [migration]))
+      (catch java.sql.BatchUpdateException e
+        (print-next-ex-trace e)
+        (throw e))
+      (catch java.sql.SQLException e
+        (print-next-ex-trace e)
+        (throw e)))))
+
 (defrecord SqlDatabase []
   Migratable
   (add-migration-id [db id] (sql-add-migration-id db id))
 
   (remove-migration-id [db id] (sql-remove-migration-id db id))
 
-  (applied-migration-ids [db] (sql-applied-migration-ids db)))
+  (applied-migration-ids [db] (sql-applied-migration-ids db))
+
+  (run-migrations [db migrations] (sql-run-migrations db migrations)))
 
 (defmethod connection "jdbc" [url]
   (map->SqlDatabase {:connection-uri url}))
