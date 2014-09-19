@@ -1,9 +1,7 @@
 (ns ragtime.sql.files
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
-            [ragtime.sql.database]))
-
-(ragtime.sql.database/require-jdbc 'sql)
+            [clojure.java.jdbc :as sql]))
 
 (def ^:private migration-pattern
   #"(.*)\.(up|down)\.sql$")
@@ -78,19 +76,18 @@
 
 (defn- run-sql-fn [file]
   (fn [db]
-    (sql/with-connection db
-      (sql/transaction
-       (try
-         (if (postgres? (sql/connection))
-           (sql/do-commands (slurp file))
-           (doseq [s (sql-statements (slurp file))]
-             (sql/do-commands s)))
-         (catch java.sql.BatchUpdateException e
-           (print-next-ex-trace e)
-           (throw e))
-         (catch java.sql.SQLException e
-           (print-next-ex-trace e)
-           (throw e)))))))
+    (sql/with-db-transaction [connection db]
+      (try
+        (if (postgres? connection)
+          (sql/db-do-commands connection (slurp file))
+          (doseq [s (sql-statements (slurp file))]
+            (sql/db-do-commands connection s)))
+        (catch java.sql.BatchUpdateException e
+          (print-next-ex-trace e)
+          (throw e))
+        (catch java.sql.SQLException e
+          (print-next-ex-trace e)
+          (throw e))))))
 
 (defn- make-migration [[id [down up]]]
   {:id   id
