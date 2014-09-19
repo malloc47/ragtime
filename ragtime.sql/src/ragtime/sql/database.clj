@@ -21,24 +21,33 @@
   (-> (SimpleDateFormat. "yyyy-MM-dd'T'HH:mm:ss.SSS")
       (.format dt)))
 
+(defn sql-add-migration-id
+  [db id]
+  (ensure-migrations-table-exists db)
+  (sql/insert! db
+               migrations-table
+               [:id :created_at]
+               [(str id) (format-datetime (Date.))]))
+
+(defn sql-remove-migration-id
+  [db id]
+  (ensure-migrations-table-exists db)
+  (sql/delete! db migrations-table ["id = ?" id]))
+
+(defn sql-applied-migration-ids
+  [db]
+  (ensure-migrations-table-exists db)
+  (sql/query db
+             [(format "SELECT id FROM %s ORDER BY created_at" migrations-table)]
+             :result-set-fn #(->> % (map :id) vec)))
+
 (defrecord SqlDatabase []
   Migratable
-  (add-migration-id [db id]
-    (ensure-migrations-table-exists db)
-    (sql/insert! db
-                 migrations-table
-                 [:id :created_at]
-                 [(str id) (format-datetime (Date.))]))
+  (add-migration-id [db id] (sql-add-migration-id db id))
 
-  (remove-migration-id [db id]
-    (ensure-migrations-table-exists db)
-    (sql/delete! db migrations-table ["id = ?" id]))
+  (remove-migration-id [db id] (sql-remove-migration-id db id))
 
-  (applied-migration-ids [db]
-    (ensure-migrations-table-exists db)
-    (sql/query db
-               [(format "SELECT id FROM %s ORDER BY created_at" migrations-table)]
-               :result-set-fn #(->> % (map :id) vec))))
+  (applied-migration-ids [db] (sql-applied-migration-ids db)))
 
 (defmethod connection "jdbc" [url]
   (map->SqlDatabase {:connection-uri url}))
