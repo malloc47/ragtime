@@ -8,11 +8,11 @@
 
 (def ^:private migrations-table "ragtime_migrations")
 
-(defn ^:internal ensure-migrations-table-exists [db]
+(defn ^:internal ensure-migrations-table-exists [db table]
   ;; TODO: is there a portable way to detect table existence?
   (try
     (sql/db-do-commands db
-      (sql/create-table-ddl migrations-table
+      (sql/create-table-ddl table
                             [:id "varchar(255)"]
                             [:created_at "varchar(32)"]))
     (catch Exception _)))
@@ -22,23 +22,23 @@
       (.format dt)))
 
 (defn sql-add-migration-id
-  [db id]
-  (ensure-migrations-table-exists db)
+  [db table id]
+  (ensure-migrations-table-exists db table)
   (sql/insert! db
-               migrations-table
+               table
                [:id :created_at]
                [(str id) (format-datetime (Date.))]))
 
 (defn sql-remove-migration-id
-  [db id]
-  (ensure-migrations-table-exists db)
-  (sql/delete! db migrations-table ["id = ?" id]))
+  [db table id]
+  (ensure-migrations-table-exists db table)
+  (sql/delete! db table ["id = ?" id]))
 
 (defn sql-applied-migration-ids
-  [db]
-  (ensure-migrations-table-exists db)
+  [db table]
+  (ensure-migrations-table-exists db table)
   (sql/query db
-             [(format "SELECT id FROM %s ORDER BY created_at" migrations-table)]
+             [(format "SELECT id FROM %s ORDER BY created_at" table)]
              :result-set-fn #(->> % (map :id) vec)))
 
 (defn- print-next-ex-trace [e]
@@ -60,11 +60,11 @@
 
 (defrecord SqlDatabase []
   Migratable
-  (add-migration-id [db id] (sql-add-migration-id db id))
+  (add-migration-id [db id] (sql-add-migration-id db migrations-table id))
 
-  (remove-migration-id [db id] (sql-remove-migration-id db id))
+  (remove-migration-id [db id] (sql-remove-migration-id db migrations-table id))
 
-  (applied-migration-ids [db] (sql-applied-migration-ids db))
+  (applied-migration-ids [db] (sql-applied-migration-ids db migrations-table))
 
   (run-migrations [db migrations] (sql-run-migrations db migrations)))
 
