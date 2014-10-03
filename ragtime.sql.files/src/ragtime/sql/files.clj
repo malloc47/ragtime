@@ -7,17 +7,17 @@
 (def ^:private migration-pattern
   #"(.*)\.(up|down)\.sql$")
 
-(defn- migration? [file]
-  (re-find migration-pattern (.getName (io/file file))))
+(defn migration? [filename]
+  (re-find migration-pattern filename))
 
-(defn- migration-id [file]
-  (second (re-find migration-pattern (.getName (io/file file)))))
+(defn migration-id [filename]
+  (second (re-find migration-pattern filename)))
 
-(defn- get-migration-files [dir]
+(defn get-migration-files [dir]
   (->> (.listFiles (io/file dir))
-       (filter migration?)
+       (filter (comp migration? #(.getName (io/file %))))
        (sort)
-       (group-by migration-id)))
+       (group-by (comp migration-id #(.getName (io/file %))))))
 
 ;; Lexer borrowed from Clout
 
@@ -85,10 +85,15 @@
 (def ^:private default-dir "migrations")
 
 (defn migrations
-  "Return a list of migrations to apply."
-  ([] (migrations default-dir run-sql-fn))
-  ([dir] (migrations dir run-sql-fn))
-  ([dir run-fn]
-     (->> (get-migration-files dir)
+  "Return a list of migrations to apply. Takes an optional map as the
+  second argument, where the function used to generate sql commands
+  can be overridden with the :run-fn key and the function used to
+  generate the file list from the directory name can be overriden
+  with :file-list-fn."
+  ([] (migrations default-dir {}))
+  ([dir] (migrations dir {}))
+  ([dir {:keys [run-fn file-list-fn] :or {run-fn run-sql-fn
+                                          file-list-fn get-migration-files}}]
+     (->> (file-list-fn dir)
           (map (partial make-migration run-fn))
           (sort-by :id))))
